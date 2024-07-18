@@ -23,36 +23,49 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 8080;
 let cnt = 0;
+const clients = new Set();
+
+const getData = () => {
+  const currIndx = cnt % 25;
+  return [
+    topGainerArray[currIndx],
+    topLoserArray[currIndx],
+    weekHighArray[currIndx],
+    topValueArray[currIndx],
+  ];
+};
 
 app.get("/stock", (req, res) => {
-  res.json(data);
+  res.json(getData());
 });
 
 io.on("connection", (socket) => {
-  
-    const sendData = () => {
-      const currIndx = cnt % 25;
-      const data = [
-        topGainerArray[currIndx],
-        topLoserArray[currIndx],
-        weekHighArray[currIndx],
-        topValueArray[currIndx],
-      ];
-      socket.emit("message", data);
-    };
-  
-    sendData();
-  
-    const interval = setInterval(() => {
+  clients.add(socket);
+
+  socket.emit("message", getData());
+
+  if (!io.intervalId) {
+    io.intervalId = setInterval(() => {
       cnt++;
-      sendData();
+      const data = getData();
+      clients.forEach(client => {
+        if (client.connected) {
+          client.emit("message", data);
+        } else {
+          clients.delete(client);
+        }
+      });
     }, 5000);
-  
-    socket.on("disconnect", () => {
-      clearInterval(interval);
-    });
+  }
+
+  socket.on("disconnect", () => {
+    clients.delete(socket);
+    if (clients.size === 0 && io.intervalId) {
+      clearInterval(io.intervalId);
+      io.intervalId = null;
+    }
   });
-  
+});
 
 server.listen(PORT, () => {
   console.log(`Server is running on port: ${PORT}`);
